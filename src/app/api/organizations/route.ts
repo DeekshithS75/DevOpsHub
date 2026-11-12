@@ -2,10 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { syncAuthenticatedUser } from "@/lib/user-sync";
 
-function generateSlug(value: string) {
-  return value
-    .trim()
+function normalizeName(name: string) {
+  return name.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function generateSlug(name: string) {
+  return name
     .toLowerCase()
+    .trim()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 }
@@ -23,9 +27,12 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
-    const name = typeof body.name === "string" ? body.name.trim() : "";
+    const name =
+      typeof body.name === "string"
+        ? body.name.trim().replace(/\s+/g, " ")
+        : "";
 
-    if (!name || name.length < 2 || name.length > 80) {
+    if (name.length < 2 || name.length > 80) {
       return NextResponse.json(
         {
           success: false,
@@ -35,33 +42,62 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const slugInput =
-      typeof body.slug === "string" && body.slug.trim() ? body.slug : name;
+    const normalizedName = normalizeName(name);
+    const baseSlug = generateSlug(name);
 
-    const slug = generateSlug(slugInput);
-
-    if (!slug || slug.length > 60) {
+    if (!baseSlug || baseSlug.length > 60) {
       return NextResponse.json(
-        { success: false, message: "Invalid organization slug" },
+        {
+          success: false,
+          message: "Invalid organization name for slug generation",
+        },
         { status: 400 },
       );
     }
 
     const existingOrganization = await prisma.organization.findUnique({
-      where: { slug },
+      where: { normalizedName },
+      select: { id: true },
     });
 
     if (existingOrganization) {
       return NextResponse.json(
-        { success: false, message: "Organization slug already exists" },
+        {
+          success: false,
+          message: "Organization name is already taken",
+        },
         { status: 409 },
       );
     }
 
     const organization = await prisma.$transaction(async (tx) => {
+      const existingSlugs = await tx.organization.findMany({
+        where: {
+          slug: {
+            startsWith: baseSlug,
+          },
+        },
+        select: {
+          slug: true,
+        },
+      });
+
+      const usedSlugs = new Set(
+        existingSlugs.map((organization) => organization.slug),
+      );
+
+      let slug = baseSlug;
+      let suffix = 2;
+
+      while (usedSlugs.has(slug)) {
+        slug = `${baseSlug}-${suffix}`;
+        suffix++;
+      }
+
       return tx.organization.create({
         data: {
           name,
+          normalizedName,
           slug,
           members: {
             create: {
@@ -70,12 +106,14 @@ export async function POST(request: NextRequest) {
             },
           },
         },
-        include: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          createdAt: true,
           members: {
             select: {
-              id: true,
               role: true,
-              userId: true,
             },
           },
         },
@@ -91,14 +129,13 @@ export async function POST(request: NextRequest) {
       { status: 201 },
     );
   } catch (error) {
-    if (
-      typeof error === "object" &&
-      error !== null &&
-      "code" in error &&
-      error.code === "P2002"
-    ) {
+    if (error instanceof Error && "code" in error && error.code === "P2002") {
       return NextResponse.json(
-        { success: false, message: "Organization slug already exists" },
+        {
+          success: false,
+          message:
+            "Organization name or slug already exists. Please try again.",
+        },
         { status: 409 },
       );
     }
@@ -106,7 +143,10 @@ export async function POST(request: NextRequest) {
     console.error("Organization creation error:", error);
 
     return NextResponse.json(
-      { success: false, message: "Failed to create organization" },
+      {
+        success: false,
+        message: "Failed to create organization",
+      },
       { status: 500 },
     );
   }
