@@ -44,7 +44,7 @@ export default function OrganizationSettings({
             General Information
           </h2>
           <p className="mt-1 text-sm text-gray-500">
-            Update your organization's basic details.
+            Update your organization&apos;s basic details.
           </p>
         </div>
 

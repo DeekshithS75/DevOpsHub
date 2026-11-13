@@ -177,7 +177,7 @@ export default function TeamPage() {
         </h2>
 
         <p className="mt-1 text-sm text-gray-500">
-          Enter a registered user's email and select their role.
+          Enter a registered user&apos;s email and select their role.
         </p>
 
         <form

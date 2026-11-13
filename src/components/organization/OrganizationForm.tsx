@@ -1,120 +1,86 @@
-
 "use client";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-type AvailabilityStatus =
-  | "idle"
-  | "checking"
-  | "available"
-  | "taken"
-  | "error";
+type AvailabilityStatus = "idle" | "checking" | "available" | "taken" | "error";
 
-const existingNames = [
-  "tech solutions",
-  "cloud technologies",
-  "devopshub",
-];
-
-// Temporary mock availability check.
-// Replace with the real backend API after merging.
-async function checkNameAvailability(
-  name: string
-): Promise<boolean> {
-  await new Promise((resolve) => setTimeout(resolve, 300));
-
-  const normalizedName = name
-    .trim()
-    .replace(/\s+/g, " ")
-    .toLowerCase();
-
-  return !existingNames.includes(normalizedName);
-}
-
-// Temporary mock creation.
-// Replace with POST /api/organizations after backend integration.
-async function createOrganization(name: string) {
-  await new Promise((resolve) => setTimeout(resolve, 1000));
-
-  const slug = name
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-
-  return {
-    success: true,
-    organization: {
-      name,
-      slug,
-    },
+type ApiResponse = {
+  success: boolean;
+  message?: string;
+  available?: boolean;
+  organization?: {
+    id: string;
+    name: string;
+    slug: string;
   };
-}
+};
 
 export default function OrganizationForm() {
   const router = useRouter();
 
   const [name, setName] = useState("");
-  const [status, setStatus] =
-    useState<AvailabilityStatus>("idle");
-  const [availabilityMessage, setAvailabilityMessage] =
-    useState("");
+  const [status, setStatus] = useState<AvailabilityStatus>("idle");
+  const [availabilityMessage, setAvailabilityMessage] = useState("");
   const [error, setError] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [success, setSuccess] = useState("");
 
   const trimmedName = name.trim();
 
-  const isValid =
-    trimmedName.length >= 2 &&
-    trimmedName.length <= 80;
+  const isValid = trimmedName.length >= 2 && trimmedName.length <= 80;
 
   useEffect(() => {
     if (!isValid) {
-      setStatus("idle");
-      setAvailabilityMessage("");
       return;
     }
 
-    let isCurrent = true;
-
-    setStatus("checking");
-    setAvailabilityMessage("");
+    const controller = new AbortController();
 
     const timer = setTimeout(async () => {
+      setStatus("checking");
+      setAvailabilityMessage("");
       try {
-        const available =
-          await checkNameAvailability(trimmedName);
-
-        if (!isCurrent) return;
-
-        setStatus(available ? "available" : "taken");
-
-        setAvailabilityMessage(
-          available
-            ? "Organization name is available!"
-            : "This organization name is already taken."
+        const response = await fetch(
+          `/api/organizations/check-name?name=${encodeURIComponent(trimmedName)}`,
+          {
+            method: "GET",
+            cache: "no-store",
+            signal: controller.signal,
+          },
         );
-      } catch {
-        if (!isCurrent) return;
+
+        const data: ApiResponse = await response.json();
+
+        if (!response.ok || !data.success) {
+          throw new Error(data.message || "Unable to check name availability.");
+        }
+
+        setStatus(data.available ? "available" : "taken");
+        setAvailabilityMessage(
+          data.message || "Unable to check name availability.",
+        );
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") {
+          return;
+        }
 
         setStatus("error");
         setAvailabilityMessage(
-          "Unable to check name availability. Please try again."
+          err instanceof Error
+            ? err.message
+            : "Unable to check name availability.",
         );
       }
     }, 500);
 
     return () => {
-      isCurrent = false;
       clearTimeout(timer);
+      controller.abort();
     };
   }, [trimmedName, isValid]);
 
-  async function handleSubmit(
-    event: React.FormEvent<HTMLFormElement>
-  ) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!isValid || status !== "available" || isCreating) {
@@ -126,22 +92,37 @@ export default function OrganizationForm() {
     setSuccess("");
 
     try {
-      const result = await createOrganization(trimmedName);
+      const response = await fetch("/api/organizations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: trimmedName,
+        }),
+      });
 
-      if (!result.success) {
-        throw new Error("Organization creation failed.");
+      const data: ApiResponse = await response.json();
+
+      if (!response.ok || !data.success || !data.organization?.slug) {
+        if (response.status === 409) {
+          setStatus("taken");
+          setAvailabilityMessage(
+            data.message || "This organization name is already taken.",
+          );
+        }
+
+        throw new Error(data.message || "Organization creation failed.");
       }
 
       setSuccess("Organization created successfully!");
 
-      router.push(
-        `/dashboard/${result.organization.slug}`
-      );
+      router.push(`/dashboard/${data.organization.slug}`);
     } catch (err) {
       setError(
         err instanceof Error
           ? err.message
-          : "Something went wrong. Please try again."
+          : "Something went wrong. Please try again.",
       );
     } finally {
       setIsCreating(false);
@@ -185,28 +166,20 @@ export default function OrganizationForm() {
         )}
 
         {isValid && status === "checking" && (
-          <p className="mt-2 text-sm text-gray-500">
-            Checking availability...
-          </p>
+          <p className="mt-2 text-sm text-gray-500">Checking availability...</p>
         )}
 
         {status === "available" && (
-          <p className="mt-2 text-sm text-green-600">
-            {availabilityMessage}
-          </p>
+          <p className="mt-2 text-sm text-green-600">{availabilityMessage}</p>
         )}
 
         {(status === "taken" || status === "error") && (
-          <p className="mt-2 text-sm text-red-600">
-            {availabilityMessage}
-          </p>
+          <p className="mt-2 text-sm text-red-600">{availabilityMessage}</p>
         )}
       </div>
 
       {error && (
-        <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600">
-          {error}
-        </p>
+        <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</p>
       )}
 
       {success && (
@@ -217,16 +190,10 @@ export default function OrganizationForm() {
 
       <button
         type="submit"
-        disabled={
-          !isValid ||
-          status !== "available" ||
-          isCreating
-        }
+        disabled={!isValid || status !== "available" || isCreating}
         className="w-full rounded-lg bg-blue-600 px-5 py-3 font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
       >
-        {isCreating
-          ? "Creating Organization..."
-          : "Create Organization"}
+        {isCreating ? "Creating Organization..." : "Create Organization"}
       </button>
     </form>
   );

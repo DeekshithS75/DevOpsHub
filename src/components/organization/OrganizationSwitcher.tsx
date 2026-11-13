@@ -1,35 +1,36 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
 interface OrganizationSwitcherProps {
   currentSlug: string;
 }
 
-const organizations = [
-  {
-    name: "My New Company",
-    slug: "my-new-company",
-    role: "OWNER",
-  },
-  {
-    name: "Cloud Technologies",
-    slug: "cloud-technologies",
-    role: "DEVELOPER",
-  },
-  {
-    name: "DevOps Team",
-    slug: "devops-team",
-    role: "VIEWER",
-  },
-];
+type Organization = { name: string; slug: string; role: string };
 
 export default function OrganizationSwitcher({
   currentSlug,
 }: OrganizationSwitcherProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [loadError, setLoadError] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/organizations", { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.message || "Unable to load organizations");
+        setOrganizations(data.organizations);
+      })
+      .catch((error: unknown) => {
+        if (error instanceof Error && error.name === "AbortError") return;
+        setLoadError(error instanceof Error ? error.message : "Unable to load organizations");
+      });
+    return () => controller.abort();
+  }, []);
 
   const currentOrganization = organizations.find(
     (org) => org.slug === currentSlug
@@ -94,6 +95,8 @@ export default function OrganizationSwitcher({
               </Link>
             );
           })}
+          {loadError && <p role="alert" className="px-3 py-2 text-sm text-red-600">{loadError}</p>}
+          {!loadError && organizations.length === 0 && <p className="px-3 py-2 text-sm text-gray-500">No organizations yet.</p>}
         </div>
       )}
     </div>
