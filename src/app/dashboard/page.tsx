@@ -1,6 +1,5 @@
-
 import { auth } from "@clerk/nextjs/server";
-import Navbar from "@/components/layout/Navbar";
+import Navbar from "../../components/layout/Navbar";
 
 export const instant = false;
 interface OverviewCardProps {
@@ -9,24 +8,14 @@ interface OverviewCardProps {
   description: string;
 }
 
-function OverviewCard({
-  title,
-  value,
-  description,
-}: OverviewCardProps) {
+function OverviewCard({ title, value, description }: OverviewCardProps) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-      <h3 className="font-semibold text-gray-700">
-        {title}
-      </h3>
+      <h3 className="font-semibold text-gray-700">{title}</h3>
 
-      <p className="mt-3 text-3xl font-bold text-gray-900">
-        {value}
-      </p>
+      <p className="mt-3 text-3xl font-bold text-gray-900">{value}</p>
 
-      <p className="mt-2 text-sm text-gray-500">
-        {description}
-      </p>
+      <p className="mt-2 text-sm text-gray-500">{description}</p>
     </div>
   );
 }
@@ -41,7 +30,6 @@ export default async function DashboardPage() {
 
       {/* Dashboard Content */}
       <div className="mx-auto max-w-7xl p-6 sm:p-8">
-
         {/* Welcome Section */}
         <section>
           <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl">
@@ -55,9 +43,7 @@ export default async function DashboardPage() {
 
         {/* Overview Cards */}
         <section className="mt-8">
-          <h3 className="mb-5 text-lg font-semibold text-gray-900">
-            Overview
-          </h3>
+          <h3 className="mb-5 text-lg font-semibold text-gray-900">Overview</h3>
 
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             <OverviewCard
@@ -82,18 +68,14 @@ export default async function DashboardPage() {
 
         {/* Getting Started */}
         <section className="mt-8 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h3 className="text-xl font-semibold text-gray-900">
-            Get Started
-          </h3>
+          <h3 className="text-xl font-semibold text-gray-900">Get Started</h3>
 
           <p className="mt-2 text-gray-600">
-            Your DevOpsHub workspace is ready.
-            Project management, GitHub integrations,
-            and deployment features will be available
-            in upcoming phases.
+            Your DevOpsHub workspace is ready. Project management, GitHub
+            integrations, and deployment features will be available in upcoming
+            phases.
           </p>
         </section>
-
       </div>
     </main>
   );
