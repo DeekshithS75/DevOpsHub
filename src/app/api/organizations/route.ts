@@ -151,3 +151,55 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export async function GET() {
+  try {
+    const user = await syncAuthenticatedUser();
+
+    if (!user) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 },
+      );
+    }
+
+    const memberships = await prisma.organizationMember.findMany({
+      where: {
+        userId: user.id,
+      },
+      select: {
+        role: true,
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+          },
+        },
+      },
+      orderBy: {
+        joinedAt: "desc",
+      },
+    });
+
+    const organizations = memberships.map((membership) => ({
+      ...membership.organization,
+      role: membership.role,
+    }));
+
+    return NextResponse.json({
+      success: true,
+      organizations,
+    });
+  } catch (error) {
+    console.error("Organization listing error:", error);
+
+    return NextResponse.json(
+      {
+        success: false,
+        message: "Failed to retrieve organizations",
+      },
+      { status: 500 },
+    );
+  }
+}
