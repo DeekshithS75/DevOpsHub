@@ -2,8 +2,9 @@
 "use client";
 
 import { useState } from "react";
+import InviteMemberForm from "@/components/organization/InviteMemberForm";
 
-type Role = "OWNER" | "DEVELOPER" | "VIEWER";
+type Role = "OWNER" | "DEVELOPER" | "VIEWER" | "ADMIN";
 type Status = "ACTIVE" | "PENDING";
 
 interface Member {
@@ -38,9 +39,19 @@ const initialMembers: Member[] = [
   },
 ];
 
+interface Invitation {
+  id: number;
+  email: string;
+  role: "DEVELOPER" | "VIEWER" | "ADMIN";
+  status: "PENDING";
+  createdAt: string;
+  expiresAt: string;
+}
+
 function RoleBadge({ role }: { role: Role }) {
   const styles: Record<Role, string> = {
     OWNER: "bg-purple-100 text-purple-700",
+    ADMIN: "bg-indigo-100 text-indigo-700",
     DEVELOPER: "bg-blue-100 text-blue-700",
     VIEWER: "bg-gray-100 text-gray-700",
   };
@@ -52,27 +63,19 @@ function RoleBadge({ role }: { role: Role }) {
   );
 }
 
-function StatusBadge({ status }: { status: Status }) {
+function StatusBadge({ status }: { status: string }) {
   return (
-    <span
-      className={`rounded-full px-3 py-1 text-xs font-semibold ${
-        status === "ACTIVE"
-          ? "bg-green-100 text-green-700"
-          : "bg-yellow-100 text-yellow-700"
-      }`}
-    >
+    <span className="rounded-full bg-yellow-100 px-3 py-1 text-xs font-semibold text-yellow-700">
       {status}
     </span>
   );
 }
 
 export default function TeamPage() {
-  const [members, setMembers] = useState(initialMembers);
+  const [members] = useState(initialMembers);
+  const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [search, setSearch] = useState("");
-  const [email, setEmail] = useState("");
-  const [role, setRole] = useState<Role>("DEVELOPER");
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const [message, setMessage] = useState("");
 
   const filteredMembers = members.filter((member) =>
     `${member.name} ${member.email}`
@@ -80,69 +83,76 @@ export default function TeamPage() {
       .includes(search.toLowerCase())
   );
 
-  function handleAddMember(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    setError("");
-    setSuccess("");
-
-    const normalizedEmail = email.trim().toLowerCase();
-
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
-      setError("Please enter a valid email address.");
-      return;
-    }
-
-    const alreadyExists = members.some(
-      (member) => member.email.toLowerCase() === normalizedEmail
+  async function handleInvite(
+    email: string,
+    role: "DEVELOPER" | "VIEWER" | "ADMIN"
+  ) {
+    const alreadyMember = members.some(
+      (member) => member.email.toLowerCase() === email
     );
 
-    if (alreadyExists) {
-      setError("This member already exists in the organization.");
-      return;
+    const alreadyInvited = invitations.some(
+      (invitation) => invitation.email.toLowerCase() === email
+    );
+
+    if (alreadyMember) {
+      throw new Error("This person is already a member.");
     }
 
-    const newMember: Member = {
+    if (alreadyInvited) {
+      throw new Error("A pending invitation already exists for this email.");
+    }
+
+    // Temporary mock invitation. Replace with the API call later.
+    await new Promise((resolve) => setTimeout(resolve, 700));
+
+    const now = new Date();
+    const expiresAt = new Date(
+      now.getTime() + 7 * 24 * 60 * 60 * 1000
+    );
+
+    const invitation: Invitation = {
       id: Date.now(),
-      name: normalizedEmail.split("@")[0],
-      email: normalizedEmail,
+      email,
       role,
       status: "PENDING",
+      createdAt: now.toISOString(),
+      expiresAt: expiresAt.toISOString(),
     };
 
-    setMembers((previous) => [...previous, newMember]);
-    setEmail("");
-    setRole("DEVELOPER");
-    setSuccess("Member added successfully (demo only).");
+    setInvitations((previous) => [...previous, invitation]);
+    setMessage("");
   }
 
-  function handleRemoveMember(id: number) {
+  function handleRevoke(id: number) {
     const confirmed = window.confirm(
-      "Are you sure you want to remove this member?"
+      "Are you sure you want to revoke this invitation?"
     );
 
     if (!confirmed) return;
 
-    setMembers((previous) =>
-      previous.filter((member) => member.id !== id)
+    setInvitations((previous) =>
+      previous.filter((invitation) => invitation.id !== id)
     );
+
+    setMessage("Invitation revoked successfully (demo only).");
+  }
+
+  function formatDate(date: string) {
+    return new Date(date).toLocaleDateString();
   }
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
-
-      {/* Header */}
       <section>
         <p className="text-sm font-medium text-blue-600">
           Organization Management
         </p>
-
         <h1 className="mt-2 text-3xl font-bold text-gray-900">
           Team Members
         </h1>
-
         <p className="mt-2 text-gray-500">
-          Manage your organization members and their roles.
+          Manage your organization members and invitations.
         </p>
       </section>
 
@@ -158,69 +168,76 @@ export default function TeamPage() {
         <div className="rounded-xl border border-gray-200 bg-white p-5">
           <p className="text-sm text-gray-500">Active Members</p>
           <p className="mt-2 text-3xl font-bold text-green-600">
-            {members.filter((m) => m.status === "ACTIVE").length}
+            {members.filter((member) => member.status === "ACTIVE").length}
           </p>
         </div>
 
         <div className="rounded-xl border border-gray-200 bg-white p-5">
-          <p className="text-sm text-gray-500">Pending Members</p>
+          <p className="text-sm text-gray-500">Pending Invitations</p>
           <p className="mt-2 text-3xl font-bold text-yellow-600">
-            {members.filter((m) => m.status === "PENDING").length}
+            {invitations.length}
           </p>
         </div>
       </section>
 
-      {/* Add Member */}
-      <section className="rounded-xl border border-gray-200 bg-white p-6">
-        <h2 className="text-lg font-semibold text-gray-900">
-          Add Team Member
-        </h2>
+      {/* Invite Form */}
+      <InviteMemberForm onInvite={handleInvite} />
 
-        <p className="mt-1 text-sm text-gray-500">
-          Enter a registered user&apos;s email and select their role.
+      {message && (
+        <p role="status" className="text-sm font-medium text-green-600">
+          {message}
         </p>
+      )}
 
-        <form
-          onSubmit={handleAddMember}
-          className="mt-5 grid gap-4 sm:grid-cols-[1fr_180px_auto]"
-        >
-          <input
-            type="email"
-            value={email}
-            onChange={(event) => {
-              setEmail(event.target.value);
-              setError("");
-              setSuccess("");
-            }}
-            placeholder="Enter member email"
-            className="rounded-lg border border-gray-300 px-4 py-3 text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-            required
-          />
+      {/* Pending Invitations */}
+      <section className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+        <div className="border-b border-gray-200 p-6">
+          <h2 className="text-lg font-semibold text-gray-900">
+            Pending Invitations
+          </h2>
+          <p className="mt-1 text-sm text-gray-500">
+            Invitations waiting for recipients to accept.
+          </p>
+        </div>
 
-          <select
-            value={role}
-            onChange={(event) => setRole(event.target.value as Role)}
-            className="rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-900 outline-none focus:border-blue-500"
-          >
-            <option value="DEVELOPER">Developer</option>
-            <option value="VIEWER">Viewer</option>
-            <option value="OWNER">Owner</option>
-          </select>
+        {invitations.length === 0 ? (
+          <p className="px-6 py-10 text-center text-sm text-gray-500">
+            No pending invitations.
+          </p>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {invitations.map((invitation) => (
+              <div
+                key={invitation.id}
+                className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="space-y-2">
+                  <p className="font-medium text-gray-900">
+                    {invitation.email}
+                  </p>
 
-          <button
-            type="submit"
-            className="rounded-lg bg-blue-600 px-6 py-3 font-medium text-white transition hover:bg-blue-700"
-          >
-            Add Member
-          </button>
-        </form>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusBadge status={invitation.status} />
+                    <RoleBadge role={invitation.role} />
+                  </div>
 
-        {error && (
-          <p className="mt-3 text-sm text-red-600">{error}</p>
-        )}
+                  <p className="text-xs text-gray-500">
+                    Invited: {formatDate(invitation.createdAt)}
+                    {" · "}
+                    Expires: {formatDate(invitation.expiresAt)}
+                  </p>
+                </div>
 
-        {success && (
-          <p className="mt-3 text-sm text-green-600">{success}</p>
+                <button
+                  type="button"
+                  onClick={() => handleRevoke(invitation.id)}
+                  className="self-start text-sm font-medium text-red-600 hover:text-red-800 sm:self-center"
+                >
+                  Revoke Invitation
+                </button>
+              </div>
+            ))}
+          </div>
         )}
       </section>
 
@@ -229,10 +246,10 @@ export default function TeamPage() {
         <div className="flex flex-col gap-4 border-b border-gray-200 p-6 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-gray-900">
-              All Members
+              Team Members
             </h2>
             <p className="mt-1 text-sm text-gray-500">
-              View and manage your team.
+              Current members of your organization.
             </p>
           </div>
 
@@ -252,7 +269,6 @@ export default function TeamPage() {
                 <th className="px-6 py-4 font-medium">Member</th>
                 <th className="px-6 py-4 font-medium">Role</th>
                 <th className="px-6 py-4 font-medium">Status</th>
-                <th className="px-6 py-4 text-right font-medium">Action</th>
               </tr>
             </thead>
 
@@ -273,26 +289,16 @@ export default function TeamPage() {
                   </td>
 
                   <td className="px-6 py-4">
-                    <StatusBadge status={member.status} />
-                  </td>
-
-                  <td className="px-6 py-4 text-right">
-                    {member.role !== "OWNER" && (
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveMember(member.id)}
-                        className="text-sm font-medium text-red-600 hover:text-red-800"
-                      >
-                        Remove
-                      </button>
-                    )}
+                    <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
+                      {member.status}
+                    </span>
                   </td>
                 </tr>
               ))}
 
               {filteredMembers.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-6 py-12 text-center text-sm text-gray-500">
+                  <td colSpan={3} className="px-6 py-12 text-center text-sm text-gray-500">
                     No team members found.
                   </td>
                 </tr>
