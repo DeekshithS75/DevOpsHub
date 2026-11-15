@@ -8,7 +8,7 @@ interface TeamPageProps {
 }
 
 export default async function TeamPage({ params }: TeamPageProps) {
-  await params;
+  const { slug } = await params;
 
-  return <TeamContent />;
+  return <TeamContent slug={slug} />;
 }

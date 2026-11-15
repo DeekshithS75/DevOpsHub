@@ -290,11 +290,11 @@ export async function GET(
       select: { role: true },
     });
 
-    if (!membership || !["OWNER", "ADMIN"].includes(membership.role)) {
+    if (!membership) {
       return NextResponse.json(
         {
           success: false,
-          message: "You do not have permission to view invitations",
+          message: "You are not a member of this organization",
         },
         { status: 403 },
       );
