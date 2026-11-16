@@ -300,6 +300,16 @@ export async function GET(
       );
     }
 
+    if (!["OWNER", "ADMIN"].includes(membership.role)) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "You do not have permission to view invitations",
+        },
+        { status: 403 },
+      );
+    }
+
     const now = new Date();
 
     await prisma.organizationInvitation.updateMany({
