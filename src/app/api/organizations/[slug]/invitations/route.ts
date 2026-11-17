@@ -150,31 +150,66 @@ export async function POST(
       }
     }
 
-    const now = new Date();
+    const token = randomBytes(32).toString("hex");
+    const tokenHash = createHash("sha256").update(token).digest("hex");
 
-    await prisma.organizationInvitation.updateMany({
-      where: {
-        organizationId: organization.id,
-        email,
-        status: "PENDING",
-        expiresAt: { lte: now },
-      },
-      data: {
-        status: "EXPIRED",
-      },
+    const invitation = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`
+        SELECT pg_advisory_xact_lock(
+          hashtextextended(${`${organization.id}:${email}`}, 0)
+        )
+      `;
+
+      const now = new Date();
+
+      await tx.organizationInvitation.updateMany({
+        where: {
+          organizationId: organization.id,
+          email,
+          status: "PENDING",
+          expiresAt: { lte: now },
+        },
+        data: {
+          status: "EXPIRED",
+        },
+      });
+
+      const existingInvitation = await tx.organizationInvitation.findFirst({
+        where: {
+          organizationId: organization.id,
+          email,
+          status: "PENDING",
+          expiresAt: { gt: now },
+        },
+        select: { id: true },
+      });
+
+      if (existingInvitation) {
+        return null;
+      }
+
+      const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+      return tx.organizationInvitation.create({
+        data: {
+          email,
+          tokenHash,
+          role,
+          expiresAt,
+          invitedById: user.id,
+          organizationId: organization.id,
+        },
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          status: true,
+          expiresAt: true,
+        },
+      });
     });
 
-    const existingInvitation = await prisma.organizationInvitation.findFirst({
-      where: {
-        organizationId: organization.id,
-        email,
-        status: "PENDING",
-        expiresAt: { gt: now },
-      },
-      select: { id: true },
-    });
-
-    if (existingInvitation) {
+    if (!invitation) {
       return NextResponse.json(
         {
           success: false,
@@ -183,29 +218,6 @@ export async function POST(
         { status: 409 },
       );
     }
-
-    const token = randomBytes(32).toString("hex");
-    const tokenHash = createHash("sha256").update(token).digest("hex");
-
-    const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-
-    const invitation = await prisma.organizationInvitation.create({
-      data: {
-        email,
-        tokenHash,
-        role,
-        expiresAt,
-        invitedById: user.id,
-        organizationId: organization.id,
-      },
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        status: true,
-        expiresAt: true,
-      },
-    });
 
     invitationId = invitation.id;
 
