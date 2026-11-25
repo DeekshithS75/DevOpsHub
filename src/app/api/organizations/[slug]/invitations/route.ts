@@ -3,11 +3,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { syncAuthenticatedUser } from "@/lib/user-sync";
 import { sendOrganizationInvitationEmail } from "@/lib/emails/organization-invitation";
+import {
+  canInviteMembers,
+  canViewInvitations,
+  INVITABLE_ROLES,
+} from "@/lib/organization-permissions";
 
-const OWNER_ROLES = ["ADMIN", "DEVELOPER", "VIEWER"] as const;
-const ADMIN_ROLES = ["DEVELOPER", "VIEWER"] as const;
-
-type InvitationRole = (typeof OWNER_ROLES)[number];
+type InvitationRole = (typeof INVITABLE_ROLES)["OWNER"][number];
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -68,7 +70,7 @@ export async function POST(
       );
     }
 
-    if (!["OWNER", "ADMIN"].includes(membership.role)) {
+    if (!canInviteMembers(membership.role)) {
       return NextResponse.json(
         {
           success: false,
@@ -111,8 +113,7 @@ export async function POST(
       );
     }
 
-    const allowedRoles: readonly InvitationRole[] =
-      membership.role === "OWNER" ? OWNER_ROLES : ADMIN_ROLES;
+    const allowedRoles: readonly InvitationRole[] = INVITABLE_ROLES[membership.role];
 
     if (!allowedRoles.includes(payload.role as InvitationRole)) {
       return NextResponse.json(
@@ -150,31 +151,66 @@ export async function POST(
       }
     }
 
-    const now = new Date();
+    const token = randomBytes(32).toString("hex");
+    const tokenHash = createHash("sha256").update(token).digest("hex");
 
-    await prisma.organizationInvitation.updateMany({
-      where: {
-        organizationId: organization.id,
-        email,
-        status: "PENDING",
-        expiresAt: { lte: now },
-      },
-      data: {
-        status: "EXPIRED",
-      },
+    const invitation = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`
+        SELECT pg_advisory_xact_lock(
+          hashtextextended(${`${organization.id}:${email}`}, 0)
+        )
+      `;
+
+      const now = new Date();
+
+      await tx.organizationInvitation.updateMany({
+        where: {
+          organizationId: organization.id,
+          email,
+          status: "PENDING",
+          expiresAt: { lte: now },
+        },
+        data: {
+          status: "EXPIRED",
+        },
+      });
+
+      const existingInvitation = await tx.organizationInvitation.findFirst({
+        where: {
+          organizationId: organization.id,
+          email,
+          status: "PENDING",
+          expiresAt: { gt: now },
+        },
+        select: { id: true },
+      });
+
+      if (existingInvitation) {
+        return null;
+      }
+
+      const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+      return tx.organizationInvitation.create({
+        data: {
+          email,
+          tokenHash,
+          role,
+          expiresAt,
+          invitedById: user.id,
+          organizationId: organization.id,
+        },
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          status: true,
+          expiresAt: true,
+        },
+      });
     });
 
-    const existingInvitation = await prisma.organizationInvitation.findFirst({
-      where: {
-        organizationId: organization.id,
-        email,
-        status: "PENDING",
-        expiresAt: { gt: now },
-      },
-      select: { id: true },
-    });
-
-    if (existingInvitation) {
+    if (!invitation) {
       return NextResponse.json(
         {
           success: false,
@@ -183,29 +219,6 @@ export async function POST(
         { status: 409 },
       );
     }
-
-    const token = randomBytes(32).toString("hex");
-    const tokenHash = createHash("sha256").update(token).digest("hex");
-
-    const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-
-    const invitation = await prisma.organizationInvitation.create({
-      data: {
-        email,
-        tokenHash,
-        role,
-        expiresAt,
-        invitedById: user.id,
-        organizationId: organization.id,
-      },
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        status: true,
-        expiresAt: true,
-      },
-    });
 
     invitationId = invitation.id;
 
@@ -295,6 +308,16 @@ export async function GET(
         {
           success: false,
           message: "You are not a member of this organization",
+        },
+        { status: 403 },
+      );
+    }
+
+    if (!canViewInvitations(membership.role)) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "You do not have permission to view invitations",
         },
         { status: 403 },
       );

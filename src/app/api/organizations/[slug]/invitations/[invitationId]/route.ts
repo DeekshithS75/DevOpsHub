@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { syncAuthenticatedUser } from "@/lib/user-sync";
+import { canViewInvitations } from "@/lib/organization-permissions";
 
 export async function DELETE(
   _request: Request,
@@ -16,7 +17,7 @@ export async function DELETE(
       select: { organizationId: true, role: true },
     });
     if (!membership) return NextResponse.json({ success: false, message: "Organization not found" }, { status: 404 });
-    if (!["OWNER", "ADMIN"].includes(membership.role)) {
+    if (!canViewInvitations(membership.role)) {
       return NextResponse.json({ success: false, message: "You do not have permission to revoke invitations" }, { status: 403 });
     }
 
