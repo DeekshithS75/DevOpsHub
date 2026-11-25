@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { syncAuthenticatedUser } from "@/lib/user-sync";
+import { canAssignRole } from "@/lib/organization-permissions";
+import { canRemoveMember } from "@/lib/organization-permissions";
+const ASSIGNABLE_ROLES = ["ADMIN", "DEVELOPER", "VIEWER"] as const;
 
-const OWNER_ALLOWED_ROLES = ["ADMIN", "DEVELOPER", "VIEWER"] as const;
-const ADMIN_ALLOWED_ROLES = ["DEVELOPER", "VIEWER"] as const;
-
-type AssignableRole = (typeof OWNER_ALLOWED_ROLES)[number];
+type AssignableRole = (typeof ASSIGNABLE_ROLES)[number];
 
 export async function PATCH(
   request: NextRequest,
@@ -43,7 +43,7 @@ export async function PATCH(
       );
     }
 
-    if (!OWNER_ALLOWED_ROLES.includes(role as AssignableRole)) {
+    if (!ASSIGNABLE_ROLES.includes(role as AssignableRole)) {
       return NextResponse.json(
         { success: false, message: "Invalid role" },
         { status: 400 },
@@ -96,12 +96,13 @@ export async function PATCH(
         return { error: "OWNER_PROTECTED" } as const;
       }
 
-      const allowedRoles =
-        actorMembership.role === "OWNER"
-          ? OWNER_ALLOWED_ROLES
-          : ADMIN_ALLOWED_ROLES;
-
-      if (!allowedRoles.includes(role as never)) {
+      if (
+        !canAssignRole(
+          actorMembership.role,
+          targetMember.role,
+          role as AssignableRole,
+        )
+      ) {
         return { error: "ROLE_NOT_ALLOWED" } as const;
       }
 
@@ -215,10 +216,6 @@ export async function DELETE(
         return { error: "ORGANIZATION_NOT_FOUND" } as const;
       }
 
-      if (!["OWNER", "ADMIN"].includes(actorMembership.role)) {
-        return { error: "FORBIDDEN" } as const;
-      }
-
       const targetMember = await tx.organizationMember.findFirst({
         where: {
           id: memberId,
@@ -235,17 +232,12 @@ export async function DELETE(
         return { error: "MEMBER_NOT_FOUND" } as const;
       }
 
-      if (targetMember.role === "OWNER") {
-        return { error: "OWNER_PROTECTED" } as const;
-      }
-
-      if (targetMember.userId === user.id) {
-        return { error: "SELF_REMOVAL_NOT_ALLOWED" } as const;
-      }
-
       if (
-        actorMembership.role === "ADMIN" &&
-        !["DEVELOPER", "VIEWER"].includes(targetMember.role)
+        !canRemoveMember(
+          actorMembership.role,
+          targetMember.role,
+          targetMember.userId === user.id,
+        )
       ) {
         return { error: "ROLE_NOT_ALLOWED" } as const;
       }
@@ -265,15 +257,6 @@ export async function DELETE(
             { status: 404 },
           );
 
-        case "FORBIDDEN":
-          return NextResponse.json(
-            {
-              success: false,
-              message: "You do not have permission to remove members",
-            },
-            { status: 403 },
-          );
-
         case "MEMBER_NOT_FOUND":
           return NextResponse.json(
             {
@@ -281,24 +264,6 @@ export async function DELETE(
               message: "Member not found in this organization",
             },
             { status: 404 },
-          );
-
-        case "OWNER_PROTECTED":
-          return NextResponse.json(
-            {
-              success: false,
-              message: "The organization owner cannot be removed",
-            },
-            { status: 403 },
-          );
-
-        case "SELF_REMOVAL_NOT_ALLOWED":
-          return NextResponse.json(
-            {
-              success: false,
-              message: "You cannot remove yourself through this endpoint",
-            },
-            { status: 403 },
           );
 
         case "ROLE_NOT_ALLOWED":

@@ -3,11 +3,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { syncAuthenticatedUser } from "@/lib/user-sync";
 import { sendOrganizationInvitationEmail } from "@/lib/emails/organization-invitation";
+import {
+  canInviteMembers,
+  canViewInvitations,
+  INVITABLE_ROLES,
+} from "@/lib/organization-permissions";
 
-const OWNER_ROLES = ["ADMIN", "DEVELOPER", "VIEWER"] as const;
-const ADMIN_ROLES = ["DEVELOPER", "VIEWER"] as const;
-
-type InvitationRole = (typeof OWNER_ROLES)[number];
+type InvitationRole = (typeof INVITABLE_ROLES)["OWNER"][number];
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -68,7 +70,7 @@ export async function POST(
       );
     }
 
-    if (!["OWNER", "ADMIN"].includes(membership.role)) {
+    if (!canInviteMembers(membership.role)) {
       return NextResponse.json(
         {
           success: false,
@@ -111,8 +113,7 @@ export async function POST(
       );
     }
 
-    const allowedRoles: readonly InvitationRole[] =
-      membership.role === "OWNER" ? OWNER_ROLES : ADMIN_ROLES;
+    const allowedRoles: readonly InvitationRole[] = INVITABLE_ROLES[membership.role];
 
     if (!allowedRoles.includes(payload.role as InvitationRole)) {
       return NextResponse.json(
@@ -312,7 +313,7 @@ export async function GET(
       );
     }
 
-    if (!["OWNER", "ADMIN"].includes(membership.role)) {
+    if (!canViewInvitations(membership.role)) {
       return NextResponse.json(
         {
           success: false,
