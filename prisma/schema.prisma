@@ -32,7 +32,26 @@ model User {
   invitationsSent  OrganizationInvitation[]  @relation("OrganizationInvitationInviter")
   createdAt        DateTime                  @default(now())
   updatedAt        DateTime                  @updatedAt
+  githubConnection GitHubConnection?
 }
+
+model GitHubConnection {
+  id                    String    @id @default(uuid())
+  userId                String    @unique
+  githubUserId          String
+  githubUsername        String
+  accessToken           String
+  tokenExpiresAt        DateTime?
+  refreshToken          String?
+  refreshTokenExpiresAt DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([githubUserId])
+}
+
 model Organization {
   id             String                    @id @default(uuid())
   name           String
@@ -44,6 +63,7 @@ model Organization {
   createdAt      DateTime                  @default(now())
   updatedAt      DateTime                  @updatedAt
 }
+
 model OrganizationMember {
   id             String           @id @default(uuid())
   userId         String
