@@ -35,22 +35,23 @@ model User {
   githubConnection GitHubConnection?
 }
 
+
 model GitHubConnection {
-  id                    String    @id @default(uuid())
-  userId                String    @unique
-  githubUserId          String
-  githubUsername        String
-  accessToken           String
-  tokenExpiresAt        DateTime?
-  refreshToken          String?
-  refreshTokenExpiresAt DateTime?
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  installationId BigInt
+  accountId      BigInt
+  accountLogin   String
+  accountType    String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([githubUserId])
+  @@index([installationId])
+  @@index([accountId])
 }
+
 
 model Organization {
   id             String                    @id @default(uuid())
