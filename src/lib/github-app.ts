@@ -1,4 +1,3 @@
-
 import { readFile } from "node:fs/promises";
 import { createSign } from "node:crypto";
 
@@ -8,7 +7,7 @@ function encodeBase64Url(value: string | Buffer) {
   return Buffer.from(value).toString("base64url");
 }
 
-async function createGitHubAppJwt() {
+export async function createGitHubAppJwt() {
   const appId = process.env.GITHUB_APP_ID;
   const privateKeyPath = process.env.GITHUB_APP_PRIVATE_KEY_PATH;
 
@@ -20,9 +19,7 @@ async function createGitHubAppJwt() {
 
   const now = Math.floor(Date.now() / 1000);
 
-  const header = encodeBase64Url(
-    JSON.stringify({ alg: "RS256", typ: "JWT" }),
-  );
+  const header = encodeBase64Url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
 
   const payload = encodeBase64Url(
     JSON.stringify({
@@ -43,9 +40,7 @@ async function createGitHubAppJwt() {
   return `${unsignedToken}.${signature}`;
 }
 
-export async function getInstallationAccessToken(
-  installationId: string,
-) {
+export async function getInstallationAccessToken(installationId: string) {
   if (!/^\d+$/.test(installationId)) {
     throw new Error("Invalid GitHub installation ID");
   }
@@ -78,4 +73,3 @@ export async function getInstallationAccessToken(
     expiresAt: data.expires_at as string,
   };
 }
-
